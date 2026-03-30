@@ -11,17 +11,17 @@ export default async function handler(req, res) {
   }
 
   try {
-
     const payload = {
       email: email,
       attributes: {
-        SYSTEM_SCORE: Number(score),             
-        SYSTEM_STAGE: stage.trim(),              
+        SYSTEM_SCORE: Number(score),
+        SYSTEM_STAGE: stage.trim(),
         SYSTEM_WEAKNESS: weakness || "Not specified",
-        RESULT_SENT: "NO",                       
-        LAST_EVALUATED_AT: new Date().toISOString() 
+        RESULT_SENT: "NO",
+        LAST_EVALUATED_AT: new Date().toISOString()
       },
-      updateEnabled: true                         
+      updateEnabled: true,
+      listIds: [7]
     };
 
     const response = await fetch(
