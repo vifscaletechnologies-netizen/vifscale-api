@@ -1,11 +1,25 @@
 export default async function handler(req, res) {
-  if (req.method !== "POST") return res.status(405).json({ message: "Method not allowed" });
+  // 1. SET CORS HEADERS
+  res.setHeader('Access-Control-Allow-Credentials', true);
+  res.setHeader('Access-Control-Allow-Origin', '*'); // In production, replace '*' with 'https://vifscale.ighreenatech.com'
+  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
+  res.setHeader('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version');
+
+  // 2. HANDLE PREFLIGHT (The 'OPTIONS' request the browser sends first)
+  if (req.method === 'OPTIONS') {
+    res.status(200).end();
+    return;
+  }
+
+  if (req.method !== "POST") {
+    return res.status(405).json({ message: "Method not allowed" });
+  }
 
   const { email, score, stage, weakness } = req.body;
   const apiKey = process.env.BREVO_API_KEY;
 
   try {
-    // STEP 1: Update the Contact Attributes & List
+    // STEP 1: Update Contact
     await fetch(`https://api.brevo.com/v3/contacts/${encodeURIComponent(email)}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json", "api-key": apiKey },
@@ -19,17 +33,14 @@ export default async function handler(req, res) {
       })
     });
 
-    // STEP 2: Fire the Custom Event (This is the "Trigger")
+    // STEP 2: Fire Custom Event
     const eventResponse = await fetch("https://api.brevo.com/v3/events", {
       method: "POST",
       headers: { "Content-Type": "application/json", "api-key": apiKey },
       body: JSON.stringify({
         event_name: "ASSESSMENT_COMPLETED",
         email: email,
-        properties: {
-          score: Number(score),
-          stage: stage
-        }
+        properties: { score: Number(score), stage: stage }
       })
     });
 
@@ -39,6 +50,7 @@ export default async function handler(req, res) {
     }
 
     return res.status(200).json({ success: true, message: "Event fired!" });
+
   } catch (error) {
     return res.status(500).json({ error: error.message });
   }
