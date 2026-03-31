@@ -2,41 +2,43 @@ export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ message: "Method not allowed" });
 
   const { email, score, stage, weakness } = req.body;
-  if (!email) return res.status(400).json({ message: "Email required" });
+  const apiKey = process.env.BREVO_API_KEY;
 
   try {
-    const payload = {
-      attributes: {
-        SYSTEM_SCORE: String(score), 
-        SYSTEM_STAGE: String(stage).trim(),
-        SYSTEM_WEAKNESS: String(weakness || "None"),
-        // We add this to ensure the "Attribute Change" trigger works
-        LAST_EVALUATED_AT: new Date().toISOString() 
-      },
-      // We use 'listIds' but we will also change the trigger in Brevo
-      listIds: [8]
-    };
-
-    const response = await fetch(
-      `https://api.brevo.com/v3/contacts/${encodeURIComponent(email)}`,
-      {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          "api-key": process.env.BREVO_API_KEY
+    // STEP 1: Update the Contact Attributes & List
+    await fetch(`https://api.brevo.com/v3/contacts/${encodeURIComponent(email)}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", "api-key": apiKey },
+      body: JSON.stringify({
+        attributes: {
+          SYSTEM_SCORE: String(score),
+          SYSTEM_STAGE: String(stage),
+          SYSTEM_WEAKNESS: String(weakness)
         },
-        body: JSON.stringify(payload)
-      }
-    );
+        listIds: [8]
+      })
+    });
 
-    const result = await response.json();
+    // STEP 2: Fire the Custom Event (This is the "Trigger")
+    const eventResponse = await fetch("https://api.brevo.com/v3/events", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "api-key": apiKey },
+      body: JSON.stringify({
+        event_name: "ASSESSMENT_COMPLETED",
+        email: email,
+        properties: {
+          score: Number(score),
+          stage: stage
+        }
+      })
+    });
 
-    if (!response.ok) {
-      console.error("Brevo Error:", result);
-      return res.status(response.status).json(result);
+    if (!eventResponse.ok) {
+      const errorData = await eventResponse.json();
+      return res.status(500).json({ error: "Event failed", details: errorData });
     }
 
-    return res.status(200).json({ success: true });
+    return res.status(200).json({ success: true, message: "Event fired!" });
   } catch (error) {
     return res.status(500).json({ error: error.message });
   }
