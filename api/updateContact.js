@@ -1,13 +1,24 @@
 export default async function handler(req, res) {
-  if (req.method === 'OPTIONS') return res.status(200).end();
-  
+  // 1. Manual CORS headers (The Backup)
+  res.setHeader('Access-Control-Allow-Origin', 'https://vifscale.ighreenatech.com');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, api-key');
+
+  // 2. Handle the "Preflight" OPTIONS request
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+
+  if (req.method !== "POST") {
+    return res.status(405).json({ message: "Method not allowed" });
+  }
+
   const { email, score, stage, weakness } = req.body;
   const apiKey = process.env.BREVO_API_KEY;
 
   try {
-    // STEP 1: Ensure Contact Exists & Update Attributes
-    // We use the 'POST' to /contacts with 'updateEnabled: true' for maximum reliability
-    const contactResponse = await fetch("https://api.brevo.com/v3/contacts", {
+    // STEP 1: Update Contact
+    await fetch("https://api.brevo.com/v3/contacts", {
       method: "POST",
       headers: { "Content-Type": "application/json", "api-key": apiKey },
       body: JSON.stringify({
@@ -22,26 +33,18 @@ export default async function handler(req, res) {
       })
     });
 
-    // STEP 2: Fire the Custom Event (This creates the event in Brevo)
+    // STEP 2: Fire Event
     const eventResponse = await fetch("https://api.brevo.com/v3/events", {
       method: "POST",
       headers: { "Content-Type": "application/json", "api-key": apiKey },
       body: JSON.stringify({
         event_name: "ASSESSMENT_COMPLETED",
         email: email,
-        properties: {
-          score_num: Number(score)
-        }
+        properties: { score_num: Number(score) }
       })
     });
 
-    const eventResult = await eventResponse.json();
-
-    if (!eventResponse.ok) {
-      return res.status(500).json({ error: "Event Registration Failed", details: eventResult });
-    }
-
-    return res.status(200).json({ success: true, message: "Event Registered!" });
+    return res.status(200).json({ success: true });
 
   } catch (error) {
     return res.status(500).json({ error: error.message });
