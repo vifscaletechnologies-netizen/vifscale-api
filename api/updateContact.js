@@ -1,14 +1,13 @@
 export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
-  if (req.method !== "POST") return res.status(405).json({ message: "Method not allowed" });
-
+  
   const { email, score, stage, weakness } = req.body;
   const apiKey = process.env.BREVO_API_KEY;
 
   try {
-    // STEP 1: Create or Update the Contact FIRST
-    // This ensures the email exists before we "fire" an event against it
-    const contactRes = await fetch("https://api.brevo.com/v3/contacts", {
+    // STEP 1: Ensure Contact Exists & Update Attributes
+    // We use the 'POST' to /contacts with 'updateEnabled: true' for maximum reliability
+    const contactResponse = await fetch("https://api.brevo.com/v3/contacts", {
       method: "POST",
       headers: { "Content-Type": "application/json", "api-key": apiKey },
       body: JSON.stringify({
@@ -19,31 +18,30 @@ export default async function handler(req, res) {
           SYSTEM_WEAKNESS: String(weakness)
         },
         listIds: [8],
-        updateEnabled: true // This is the magic flag that prevents 400 errors if user exists
+        updateEnabled: true 
       })
     });
 
-    // STEP 2: Fire the Event
+    // STEP 2: Fire the Custom Event (This creates the event in Brevo)
     const eventResponse = await fetch("https://api.brevo.com/v3/events", {
       method: "POST",
       headers: { "Content-Type": "application/json", "api-key": apiKey },
       body: JSON.stringify({
         event_name: "ASSESSMENT_COMPLETED",
         email: email,
-        properties: { 
-            score: Number(score), 
-            stage: stage 
+        properties: {
+          score_num: Number(score)
         }
       })
     });
 
+    const eventResult = await eventResponse.json();
+
     if (!eventResponse.ok) {
-      const errorDetail = await eventResponse.json();
-      console.error("Brevo Event Error:", errorDetail);
-      return res.status(500).json({ error: "Event failed", details: errorDetail });
+      return res.status(500).json({ error: "Event Registration Failed", details: eventResult });
     }
 
-    return res.status(200).json({ success: true });
+    return res.status(200).json({ success: true, message: "Event Registered!" });
 
   } catch (error) {
     return res.status(500).json({ error: error.message });
