@@ -1,23 +1,12 @@
 export default async function handler(req, res) {
-  // 1. Manual CORS headers (The Backup)
   res.setHeader('Access-Control-Allow-Origin', 'https://vifscale.ighreenatech.com');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, api-key');
-
-  // 2. Handle the "Preflight" OPTIONS request
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
-
-  if (req.method !== "POST") {
-    return res.status(405).json({ message: "Method not allowed" });
-  }
+  if (req.method === 'OPTIONS') return res.status(200).end();
 
   const { email, score, stage, weakness } = req.body;
   const apiKey = process.env.BREVO_API_KEY;
 
   try {
-    // STEP 1: Update Contact
+    // STEP 1: Ensure contact exists (This is vital)
     await fetch("https://api.brevo.com/v3/contacts", {
       method: "POST",
       headers: { "Content-Type": "application/json", "api-key": apiKey },
@@ -28,25 +17,33 @@ export default async function handler(req, res) {
           SYSTEM_STAGE: String(stage),
           SYSTEM_WEAKNESS: String(weakness)
         },
-        listIds: [8],
         updateEnabled: true 
       })
     });
 
-    // STEP 2: Fire Event
+    // STEP 2: Fire the Event using the IDENTIFIERS object
     const eventResponse = await fetch("https://api.brevo.com/v3/events", {
       method: "POST",
       headers: { "Content-Type": "application/json", "api-key": apiKey },
       body: JSON.stringify({
         event_name: "ASSESSMENT_COMPLETED",
-        email: email,
-        properties: { score_num: Number(score) }
+        identifiers: { email: email }, // This is the mandatory 2026 format
+        event_properties: {
+          score: Number(score),
+          stage: stage
+        }
       })
     });
 
-    return res.status(200).json({ success: true });
+    const result = await eventResponse.json();
+
+    if (!eventResponse.ok) {
+      return res.status(500).json({ success: false, error: result });
+    }
+
+    return res.status(200).json({ success: true, message: "Event pushed to Brevo" });
 
   } catch (error) {
-    return res.status(500).json({ error: error.message });
+    return res.status(500).json({ success: false, error: error.message });
   }
 }
