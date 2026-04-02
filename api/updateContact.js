@@ -6,7 +6,7 @@ export default async function handler(req, res) {
   const apiKey = process.env.BREVO_API_KEY;
 
   try {
-    // STEP 1: Ensure contact exists (This is vital)
+    // STEP 1: Update Contact Attributes
     await fetch("https://api.brevo.com/v3/contacts", {
       method: "POST",
       headers: { "Content-Type": "application/json", "api-key": apiKey },
@@ -21,16 +21,16 @@ export default async function handler(req, res) {
       })
     });
 
-    // STEP 2: Fire the Event using the IDENTIFIERS object
+    // STEP 2: Fire Event (Updated Structure)
     const eventResponse = await fetch("https://api.brevo.com/v3/events", {
       method: "POST",
       headers: { "Content-Type": "application/json", "api-key": apiKey },
       body: JSON.stringify({
         event_name: "ASSESSMENT_COMPLETED",
-        identifiers: { email: email }, // This is the mandatory 2026 format
+        email: email, // Moving email to top-level for better compatibility
         event_properties: {
-          score: Number(score),
-          stage: stage
+          score_num: Number(score),
+          stage_name: stage
         }
       })
     });
@@ -41,7 +41,7 @@ export default async function handler(req, res) {
       return res.status(500).json({ success: false, error: result });
     }
 
-    return res.status(200).json({ success: true, message: "Event pushed to Brevo" });
+    return res.status(200).json({ success: true, message: "Event pushed!" });
 
   } catch (error) {
     return res.status(500).json({ success: false, error: error.message });
