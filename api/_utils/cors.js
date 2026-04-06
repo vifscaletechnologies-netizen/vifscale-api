@@ -1,8 +1,8 @@
-
 export const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Accept'
+  'Access-Control-Allow-Headers': 'Content-Type, Accept, Authorization, X-Requested-With',
+  'Access-Control-Max-Age': '86400'
 };
 
 export function handleCors(res) {
