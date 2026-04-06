@@ -1,118 +1,115 @@
-// api/capture-lead.js
-import { BrevoClient } from './lib/brevo.js';
-import { logEvent } from './lib/events.js';
-
 export default async function handler(req, res) {
-  // CORS headers
+  // CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Accept, Authorization, X-Requested-With');
-  res.setHeader('Access-Control-Max-Age', '86400');
-
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Accept');
   
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
+  if (req.method === 'OPTIONS') return res.status(200).end();
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   const requestId = crypto.randomUUID();
-  
-  // DEBUG: Log incoming request
-  console.log(`[${requestId}] Received request:`, JSON.stringify(req.body));
+  console.log(`[${requestId}] Starting capture for:`, req.body?.email);
 
   try {
     const { email, firstname, company, source } = req.body;
     
     if (!email || !firstname) {
-      console.log(`[${requestId}] Validation failed: missing fields`);
       return res.status(400).json({ error: 'Email and firstname required' });
     }
 
-    // DEBUG: Check env vars
-    console.log(`[${requestId}] Env check:`, {
-      hasApiKey: !!process.env.BREVO_API_KEY,
-      apiKeyPrefix: process.env.BREVO_API_KEY?.substring(0, 10) + '...',
-      listId: process.env.BREVO_LIST_ID,
-      welcomeTemplateId: process.env.BREVO_WELCOME_TEMPLATE_ID
-    });
-
-    const brevo = new BrevoClient(process.env.BREVO_API_KEY);
     const cleanEmail = email.toLowerCase().trim();
+    const BREVO_API_KEY = process.env.BREVO_API_KEY;
+    const BREVO_LIST_ID = parseInt(process.env.BREVO_LIST_ID);
+    const WELCOME_TEMPLATE_ID = parseInt(process.env.BREVO_WELCOME_TEMPLATE_ID);
 
-    // DEBUG: Attempt contact creation
-    console.log(`[${requestId}] Creating contact:`, cleanEmail);
+    console.log(`[${requestId}] Env vars:`, { 
+      hasKey: !!BREVO_API_KEY, 
+      listId: BREVO_LIST_ID, 
+      templateId: WELCOME_TEMPLATE_ID 
+    });
+
+    // Step 1: Create/Update Contact in Brevo
+    console.log(`[${requestId}] Step 1: Creating contact...`);
     
-    const contactResult = await brevo.upsertContact({
-      email: cleanEmail,
-      firstname,
-      attributes: {
-        FIRSTNAME: firstname,
-        COMPANY: company || '',
-        LEAD_SOURCE: source || 'index_page',
-        CAPTURED_AT: new Date().toISOString(),
-        ASSESSMENT_COMPLETED: 'false',
-        LEAD_TEMPERATURE: 'WARM'
+    const contactRes = await fetch('https://api.brevo.com/v3/contacts', {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+        'api-key': BREVO_API_KEY
       },
-      listIds: [parseInt(process.env.BREVO_LIST_ID)]
+      body: JSON.stringify({
+        email: cleanEmail,
+        attributes: {
+          FIRSTNAME: firstname,
+          COMPANY: company || '',
+          LEAD_SOURCE: source || 'index_page',
+          CAPTURED_AT: new Date().toISOString(),
+          ASSESSMENT_COMPLETED: 'false'
+        },
+        listIds: [BREVO_LIST_ID],
+        updateEnabled: true
+      })
     });
 
-    console.log(`[${requestId}] Contact result:`, contactResult);
-
-    // DEBUG: Attempt email send
-    console.log(`[${requestId}] Sending welcome email to:`, cleanEmail);
+    const contactStatus = contactRes.status;
+    let contactData = null;
     
-    const emailResult = await brevo.sendTransactionalEmail({
-      to: cleanEmail,
-      toName: firstname,
-      templateId: parseInt(process.env.BREVO_WELCOME_TEMPLATE_ID),
-      params: {
-        FIRSTNAME: firstname,
-        ASSESSMENT_LINK: `https://vifscale.ighreenatech.com/assessment.html?e=${encodeURIComponent(cleanEmail)}`,
-        COMPANY: company || 'your company'
-      }
+    if (contactRes.ok) {
+      contactData = await contactRes.json();
+      console.log(`[${requestId}] Contact created:`, contactData.id);
+    } else if (contactStatus === 204) {
+      console.log(`[${requestId}] Contact updated (204)`);
+    } else {
+      const errorText = await contactRes.text();
+      console.error(`[${requestId}] Contact failed:`, contactStatus, errorText);
+      throw new Error(`Contact creation failed: ${contactStatus}`);
+    }
+
+    // Step 2: Send Welcome Email
+    console.log(`[${requestId}] Step 2: Sending email...`);
+    
+    const emailRes = await fetch('https://api.brevo.com/v3/smtp/email', {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+        'api-key': BREVO_API_KEY
+      },
+      body: JSON.stringify({
+        to: [{ email: cleanEmail, name: firstname }],
+        templateId: WELCOME_TEMPLATE_ID,
+        params: {
+          FIRSTNAME: firstname,
+          ASSESSMENT_LINK: `https://vifscale.ighreenatech.com/assessment.html?e=${encodeURIComponent(cleanEmail)}`,
+          COMPANY: company || 'your company'
+        }
+      })
     });
 
-    console.log(`[${requestId}] Email result:`, emailResult);
-
-    await logEvent(requestId, 'LEAD_CAPTURED', { 
-      email: hashEmail(cleanEmail),
-      contactCreated: contactResult.success,
-      emailSent: emailResult.success
-    });
+    let emailData = null;
+    if (emailRes.ok) {
+      emailData = await emailRes.json();
+      console.log(`[${requestId}] Email sent:`, emailData.messageId);
+    } else {
+      const errorText = await emailRes.text();
+      console.error(`[${requestId}] Email failed:`, emailRes.status, errorText);
+      // Don't fail the whole request if email fails
+    }
 
     return res.status(200).json({
       success: true,
       requestId,
-      contactCreated: contactResult.success,
-      emailSent: emailResult.success,
-      capturedAt: new Date().toISOString()
+      contactStatus,
+      emailStatus: emailRes.status,
+      messageId: emailData?.messageId
     });
 
   } catch (error) {
-    // DEBUG: Detailed error logging
-    console.error(`[${requestId}] ERROR:`, {
-      message: error.message,
-      name: error.name,
-      statusCode: error.statusCode,
-      response: error.response,
-      stack: error.stack
-    });
-    
-    await logEvent(requestId, 'LEAD_CAPTURE_FAILED', { 
-      error: error.message,
-      statusCode: error.statusCode 
-    });
-    
+    console.error(`[${requestId}] CRITICAL ERROR:`, error.message, error.stack);
     return res.status(500).json({ 
-      error: 'Failed to process', 
-      details: error.message,
+      error: error.message, 
       requestId 
     });
   }
-}
-
-function hashEmail(email) {
-  return email.split('@')[0].slice(0,2) + '***@' + email.split('@')[1];
 }
