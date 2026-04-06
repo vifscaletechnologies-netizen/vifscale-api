@@ -1,4 +1,3 @@
-// api/submit-assessment.js
 import { corsHeaders, handleCors } from './_utils/cors.js';
 import { validateAssessment } from './_utils/validate.js';
 import { BrevoClient } from './lib/brevo.js';
