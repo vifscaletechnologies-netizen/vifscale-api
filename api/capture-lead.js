@@ -50,7 +50,9 @@ export default async function handler(req, res) {
       throw new Error('BREVO_API_KEY not configured');
     }
 
-    // Step 1: Create contact in Brevo
+    //CONTACT CREATION LOGIC
+    
+    // Step 1: Create/Update Contact
     console.log(`[${requestId}] Creating contact for: ${cleanEmail}`);
     
     const contactPayload = {
@@ -62,46 +64,59 @@ export default async function handler(req, res) {
         CAPTURED_AT: new Date().toISOString(),
         ASSESSMENT_COMPLETED: 'false'
       },
-      listIds: BREVO_LIST_ID ? [parseInt(BREVO_LIST_ID)] : [],
       updateEnabled: true
+      // Note: listIds moved to separate call below
     };
 
-    console.log(`[${requestId}] Contact payload:`, JSON.stringify(contactPayload));
+    let contactRes = await fetch('https://api.brevo.com/v3/contacts', {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+        'api-key': BREVO_API_KEY
+      },
+      body: JSON.stringify(contactPayload)
+    });
 
-    let contactRes;
-    try {
-      contactRes = await fetch('https://api.brevo.com/v3/contacts', {
+    // If contact exists, update via PUT
+    if (contactRes.status === 400) {
+      console.log(`[${requestId}] Contact exists, updating...`);
+      contactRes = await fetch(`https://api.brevo.com/v3/contacts/${encodeURIComponent(cleanEmail)}`, {
+        method: 'PUT',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+          'api-key': BREVO_API_KEY
+        },
+        body: JSON.stringify({ attributes: contactPayload.attributes })
+      });
+    }
+
+    // Step 1b: FORCE ADD TO LIST (separate API call)
+    if (BREVO_LIST_ID) {
+      console.log(`[${requestId}] Adding to list ${BREVO_LIST_ID}...`);
+      
+      const listRes = await fetch('https://api.brevo.com/v3/contacts/lists/add', {
         method: 'POST',
         headers: {
           'Accept': 'application/json',
           'Content-Type': 'application/json',
           'api-key': BREVO_API_KEY
         },
-        body: JSON.stringify(contactPayload)
+        body: JSON.stringify({
+          emails: [cleanEmail],
+          listIds: [parseInt(BREVO_LIST_ID)]
+        })
       });
-    } catch (fetchError) {
-      console.error(`[${requestId}] Fetch error (contact):`, fetchError.message);
-      throw new Error(`Network error contacting Brevo: ${fetchError.message}`);
+
+      console.log(`[${requestId}] List add status:`, listRes.status);
+      
+      if (!listRes.ok && listRes.status !== 204) {
+        const listError = await listRes.text();
+        console.error(`[${requestId}] List add failed:`, listError);
+        // Don't fail - contact is created, list is secondary
+      }
     }
-
-    console.log(`[${requestId}] Contact response status:`, contactRes.status);
-
-    let contactResult = { success: false, status: contactRes.status };
-    
-    if (contactRes.status === 201) {
-      const data = await contactRes.json();
-      contactResult = { success: true, id: data.id, status: 201 };
-      console.log(`[${requestId}] Contact created:`, data.id);
-    } else if (contactRes.status === 204) {
-      contactResult = { success: true, updated: true, status: 204 };
-      console.log(`[${requestId}] Contact updated`);
-    } else {
-      const errorText = await contactRes.text();
-      console.error(`[${requestId}] Contact error:`, contactRes.status, errorText);
-      contactResult.error = errorText;
-      // Continue anyway - don't fail the whole request
-    }
-
     // Step 2: Send email (only if template ID exists)
     let emailResult = { success: false, skipped: true };
     
