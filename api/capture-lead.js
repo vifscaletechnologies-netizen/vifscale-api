@@ -107,10 +107,11 @@ export default async function handler(req, res) {
     }
 
     // Step 2: Add to list
-    if (BREVO_LIST_ID && contactResult.success) {
+   if (BREVO_LIST_ID && contactResult.success) {
       console.log('[' + requestId + '] Adding to list:', BREVO_LIST_ID);
       
-      const listRes = await fetch('https://api.brevo.com/v3/contacts/lists/add', {
+      // CORRECT ENDPOINT: Add contact to list
+      const listRes = await fetch('https://api.brevo.com/v3/contacts/lists/' + parseInt(BREVO_LIST_ID) + '/contacts/add', {
         method: 'POST',
         headers: {
           'Accept': 'application/json',
@@ -118,8 +119,7 @@ export default async function handler(req, res) {
           'api-key': BREVO_API_KEY
         },
         body: JSON.stringify({
-          emails: [cleanEmail],
-          listIds: [parseInt(BREVO_LIST_ID)]
+          emails: [cleanEmail]
         })
       });
 
@@ -128,6 +128,8 @@ export default async function handler(req, res) {
       if (!listRes.ok && listRes.status !== 204) {
         const listError = await listRes.text();
         console.error('[' + requestId + '] List add failed:', listError);
+      } else {
+        console.log('[' + requestId + '] List add success');
       }
     }
 
