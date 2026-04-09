@@ -37,7 +37,7 @@ export async function sendResultsEmail({ to, toName, templateData, brevoClient }
   try {
     const result = await brevoClient.sendTransactionalEmail({
       to,
-      toName,
+      toName: toName || templateData.firstname || to.split('@')[0],
       templateId: selection.templateId,
       params: {
         // All 20 attributes available to template
