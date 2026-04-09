@@ -57,7 +57,7 @@ export default async function handler(req, res) {
         ASSESSMENT_SCORE: score,
         RAW_SCORE: parseInt(data.raw_score) || 0,
         ASSESSMENT_GRADE: data.assessment_grade || calculateGrade(score),
-        STAGE: tierName, // Use calculated tier name
+        STAGE: tierName,
         WEAKEST_AREA: data.weakest_area || '',
         CATEGORY_SCORES: JSON.stringify(data.category_scores || {}),
         RECOMMENDATIONS: Array.isArray(data.recommendations) 
@@ -72,7 +72,8 @@ export default async function handler(req, res) {
         // Lead tracking
         LEAD_SOURCE: data.source || 'assessment_page',
         LEAD_TEMPERATURE: calculateTemperature(score),
-        CAPTURED_AT: sessionStorage.getItem('capturedAt') || new Date().toISOString(),
+        // FIXED: Removed sessionStorage reference
+        CAPTURED_AT: data.captured_at || data.completed_at || new Date().toISOString(),
         LAST_ASSESSMENT_AT: data.completed_at || new Date().toISOString(),
         LAST_ASSESSMENT_IP: req.headers['x-forwarded-for']?.split(',')[0] || req.socket.remoteAddress || '',
 
@@ -124,9 +125,11 @@ export default async function handler(req, res) {
     });
 
   } catch (error) {
-    await logEvent(requestId, 'ASSESSMENT_FAILED', { error: error.message });
+    // Log full error for debugging
+    console.error('API Error:', error);
+    await logEvent(requestId, 'ASSESSMENT_FAILED', { error: error.message, stack: error.stack });
     return res.status(500).json({
-      error: 'Processing failed',
+      error: 'Processing failed: ' + error.message,
       requestId,
       retryable: true
     });
