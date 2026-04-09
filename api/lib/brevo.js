@@ -139,22 +139,42 @@ export class BrevoClient {
   }
 
    // Send transactional email
+   // Send transactional email
   async sendTransactionalEmail({ to, toName, templateId, params, subject, htmlContent }) {
     // Build recipient object - only include name if it exists
     const recipient = toName && toName.trim() 
       ? { email: to, name: toName.trim() }
       : { email: to };
     
-    const payload = templateId ? {
-      to: [recipient],
-      templateId,
-      params
-    } : {
-      to: [recipient],
-      sender: { email: process.env.EMAIL_FROM, name: process.env.EMAIL_FROM_NAME },
-      subject,
-      htmlContent
-    };
+    // Build payload
+    let payload;
+    if (templateId) {
+      payload = {
+        to: [recipient],
+        templateId: parseInt(templateId),
+        params: params || {}
+      };
+      
+      // CRITICAL: Add sender - Brevo requires this even for templates
+      if (process.env.EMAIL_FROM) {
+        payload.sender = {
+          email: process.env.EMAIL_FROM,
+          name: process.env.EMAIL_FROM_NAME || 'Business Systems Assessment'
+        };
+      }
+    } else {
+      payload = {
+        to: [recipient],
+        sender: { 
+          email: process.env.EMAIL_FROM, 
+          name: process.env.EMAIL_FROM_NAME || 'Business Systems Assessment' 
+        },
+        subject,
+        htmlContent
+      };
+    }
+
+    console.log('Sending email payload:', JSON.stringify(payload));
 
     const result = await this.fetchWithRetry('/smtp/email', {
       method: 'POST',
