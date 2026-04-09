@@ -138,14 +138,19 @@ export class BrevoClient {
     });
   }
 
-  // Send transactional email
+   // Send transactional email
   async sendTransactionalEmail({ to, toName, templateId, params, subject, htmlContent }) {
+    // Build recipient object - only include name if it exists
+    const recipient = toName && toName.trim() 
+      ? { email: to, name: toName.trim() }
+      : { email: to };
+    
     const payload = templateId ? {
-      to: [{ email: to, name: toName }],
+      to: [recipient],
       templateId,
       params
     } : {
-      to: [{ email: to, name: toName }],
+      to: [recipient],
       sender: { email: process.env.EMAIL_FROM, name: process.env.EMAIL_FROM_NAME },
       subject,
       htmlContent
