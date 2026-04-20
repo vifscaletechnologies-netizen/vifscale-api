@@ -4,11 +4,11 @@ import { BrevoClient } from './brevo.js';
 
 // 5-tier template mapping
 const TEMPLATES = {
-  TIER_1: parseInt(process.env.BREVO_TEMPLATE_0_25 || '33'),    // 0-25%: Activity Without System
-  TIER_2: parseInt(process.env.BREVO_TEMPLATE_26_50 || '11'),   // 26-50%: Fragmented Infrastructure
+  TIER_1: parseInt(process.env.BREVO_TEMPLATE_0_25 || '46'),    // 0-25%: Activity Without System
+  TIER_2: parseInt(process.env.BREVO_TEMPLATE_26_50 || '44'),   // 26-50%: Fragmented Infrastructure
   TIER_3: parseInt(process.env.BREVO_TEMPLATE_51_70 || '9'),    // 51-70%: Emerging Revenue System
   TIER_4: parseInt(process.env.BREVO_TEMPLATE_71_85 || '12'),   // 71-85%: Structured but Inefficient
-  TIER_5: parseInt(process.env.BREVO_TEMPLATE_86_100 || '34')   // 86-100%: Operational Revenue Engine
+  TIER_5: parseInt(process.env.BREVO_TEMPLATE_86_100 || '45')   // 86-100%: Operational Revenue Engine
 };
 
 const TIER_NAMES = {
